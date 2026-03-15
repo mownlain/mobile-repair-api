@@ -7,7 +7,7 @@ from typing import List, Optional
 api_app = FastAPI()
 
 def auto_fix_db():
-    """ဒီ function က Dashboard ထဲသွားစရာမလိုဘဲ Database ကို အလိုအလျောက် ပြင်ပေးမှာပါ"""
+    """Database Table နှင့် Column များကို အလိုအလျောက် စစ်ဆေးပြင်ဆင်ပေးခြင်း"""
     conn = sqlite3.connect("online_repair.db")
     cursor = conn.cursor()
     
@@ -17,7 +17,7 @@ def auto_fix_db():
                        name TEXT, phone TEXT, model TEXT, 
                        cost INTEGER, status TEXT, date TEXT)''')
     
-    # ၂။ Technician နဲ့ Part Cost ရှိမရှိ စစ်ပြီး မရှိရင် အတင်းထည့်ခြင်း
+    # ၂။ လိုအပ်သော Column များ ရှိမရှိ စစ်ဆေးခြင်း
     existing_columns = [row[1] for row in cursor.execute("PRAGMA table_info(repairs)")]
     
     if "technician" not in existing_columns:
@@ -31,7 +31,7 @@ def auto_fix_db():
     conn.commit()
     conn.close()
 
-# Server စပွင့်တာနဲ့ DB ကို အလိုအလျောက် ပြင်ခိုင်းမယ်
+# Server စတင်ချိန်တွင် Database Fix ကို ခေါ်ယူမည်
 auto_fix_db()
 
 class RepairItem(BaseModel):
@@ -45,6 +45,7 @@ class RepairItem(BaseModel):
     technician: Optional[str] = "None"
     part_cost: Optional[int] = 0
 
+# --- ၁။ စာရင်းများ ဆွဲယူရန် (GET) ---
 @api_app.get("/repairs", response_model=List[RepairItem])
 def get_repairs(search: str = ""):
     conn = sqlite3.connect("online_repair.db")
@@ -58,6 +59,7 @@ def get_repairs(search: str = ""):
     conn.close()
     return [RepairItem(id=r[0], name=r[1], phone=r[2], model=r[3], cost=r[4], status=r[5], date=r[6], technician=r[7] if r[7] else "None", part_cost=r[8] if r[8] else 0) for r in rows]
 
+# --- ၂။ စာရင်းအသစ်ထည့်ရန် သို့မဟုတ် ပြင်ရန် (POST) ---
 @api_app.post("/repairs")
 def add_or_update(item: RepairItem):
     conn = sqlite3.connect("online_repair.db")
@@ -71,3 +73,25 @@ def add_or_update(item: RepairItem):
     conn.commit()
     conn.close()
     return {"status": "success"}
+
+# --- ၃။ စာရင်းဖျက်ရန် (DELETE) - ဒါကို အသစ်ပေါင်းထည့်ထားပါတယ် ---
+@api_app.delete("/repairs/{id}")
+def delete_repair(id: int):
+    conn = sqlite3.connect("online_repair.db")
+    cursor = conn.cursor()
+    
+    # ID ရှိမရှိ အရင်စစ်မည်
+    cursor.execute("SELECT id FROM repairs WHERE id = ?", (id,))
+    item = cursor.fetchone()
+    
+    if item:
+        cursor.execute("DELETE FROM repairs WHERE id = ?", (id,))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "message": f"Job {id} deleted successfully"}
+    else:
+        conn.close()
+        return {"status": "error", "message": "Item not found"}, 404
+
+if __name__ == "__main__":
+    uvicorn.run(api_app, host="0.0.0.0", port=8000)
