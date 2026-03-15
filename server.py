@@ -1,33 +1,38 @@
 import sqlite3
+import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional
 
 api_app = FastAPI()
 
-def init_db():
+def auto_fix_db():
+    """ဒီ function က Dashboard ထဲသွားစရာမလိုဘဲ Database ကို အလိုအလျောက် ပြင်ပေးမှာပါ"""
     conn = sqlite3.connect("online_repair.db")
     cursor = conn.cursor()
     
-    # Table ရှိမရှိ အရင်စစ်ပြီး မရှိရင် အသစ်ဆောက်မယ်
+    # ၁။ Table အခြေခံ ဆောက်ခြင်း
     cursor.execute('''CREATE TABLE IF NOT EXISTS repairs 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                        name TEXT, phone TEXT, model TEXT, 
-                       cost INTEGER, status TEXT, date TEXT,
-                       technician TEXT, part_cost INTEGER)''')
+                       cost INTEGER, status TEXT, date TEXT)''')
     
-    # Column အဟောင်းပဲ ရှိနေရင် အသစ်တွေ အတင်းထည့်ခိုင်းမယ်
-    columns = [row[1] for row in cursor.execute("PRAGMA table_info(repairs)")]
+    # ၂။ Technician နဲ့ Part Cost ရှိမရှိ စစ်ပြီး မရှိရင် အတင်းထည့်ခြင်း
+    existing_columns = [row[1] for row in cursor.execute("PRAGMA table_info(repairs)")]
     
-    if "technician" not in columns:
+    if "technician" not in existing_columns:
+        print("Adding technician column...")
         cursor.execute("ALTER TABLE repairs ADD COLUMN technician TEXT DEFAULT 'None'")
-    if "part_cost" not in columns:
+    
+    if "part_cost" not in existing_columns:
+        print("Adding part_cost column...")
         cursor.execute("ALTER TABLE repairs ADD COLUMN part_cost INTEGER DEFAULT 0")
         
     conn.commit()
     conn.close()
 
-init_db()
+# Server စပွင့်တာနဲ့ DB ကို အလိုအလျောက် ပြင်ခိုင်းမယ်
+auto_fix_db()
 
 class RepairItem(BaseModel):
     id: Optional[int] = None
@@ -44,7 +49,6 @@ class RepairItem(BaseModel):
 def get_repairs(search: str = ""):
     conn = sqlite3.connect("online_repair.db")
     cursor = conn.cursor()
-    # ရှာဖွေမှုရှိလျှင်
     if search:
         cursor.execute("SELECT id, name, phone, model, cost, status, date, technician, part_cost FROM repairs WHERE name LIKE ? OR phone LIKE ?", (f'%{search}%', f'%{search}%'))
     else:
